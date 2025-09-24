@@ -469,10 +469,13 @@ pkgconfig.generate(
 	requires_private : dep_udev,
 )
 
-git_version_h = vcs_tag(command : ['git', 'describe'],
-			fallback : 'unknown',
-			input : 'src/libinput-git-version.h.in',
-			output :'libinput-git-version.h')
+git_version_h = configure_file(
+	input: 'src/libinput-git-version.h.in',
+	output: 'libinput-git-version.h',
+	configuration: configuration_data({
+	  'VCS_TAG': get_option('version')
+	})
+)
 
 ############ documentation ############
 
