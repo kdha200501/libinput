@@ -38,6 +38,15 @@ enum gesture_cancelled {
 #define DEFAULT_GESTURE_SWITCH_TIMEOUT ms2us(100)
 #define DEFAULT_GESTURE_SWIPE_TIMEOUT ms2us(150)
 #define DEFAULT_GESTURE_PINCH_TIMEOUT ms2us(300)
+#define TP_GESTURE_MAX_FINGER_COUNT 5
+/* At the hardware's maximum tracked finger count (5), the outermost touch
+ * (typically the pinky) is more prone to transient under-detection than at
+ * lower finger counts. Give finger-count changes involving 5 fingers extra
+ * time to stabilize before treating the change as deliberate and cancelling
+ * an in-progress gesture, to avoid spurious cancellation of 5-finger
+ * gestures. This only affects the finger_count == 5 case; the timeout for
+ * all other finger-count transitions (1-4) is unchanged. */
+#define FIVE_FINGER_GESTURE_SWITCH_TIMEOUT ms2us(300)
 
 #define HOLD_AND_MOTION_THRESHOLD 0.5 /* mm */
 #define PINCH_DISAMBIGUATION_MOVE_THRESHOLD 1.5 /* mm */
@@ -1871,7 +1880,7 @@ tp_gesture_post_events(struct tp_dispatch *tp, uint64_t time, bool ignore_motion
 	    tp_gesture_thumb_moved(tp))
 		tp_thumb_reset(tp);
 
-	if (tp->gesture.finger_count <= 4)
+	if (tp->gesture.finger_count <= TP_GESTURE_MAX_FINGER_COUNT)
 		tp_gesture_handle_state(tp, time, ignore_motion);
 }
 
@@ -2026,8 +2035,14 @@ tp_gesture_update_finger_state(struct tp_dispatch *tp, uint64_t time)
 			/* Else debounce finger changes */
 		} else if (active_touches != tp->gesture.finger_count_pending) {
 			tp->gesture.finger_count_pending = active_touches;
+			const bool involves_five_fingers =
+				active_touches == TP_GESTURE_MAX_FINGER_COUNT ||
+				tp->gesture.finger_count == TP_GESTURE_MAX_FINGER_COUNT;
+			const uint64_t switch_timeout = involves_five_fingers
+				? FIVE_FINGER_GESTURE_SWITCH_TIMEOUT
+				: DEFAULT_GESTURE_SWITCH_TIMEOUT;
 			libinput_timer_set(&tp->gesture.finger_count_switch_timer,
-					   time + DEFAULT_GESTURE_SWITCH_TIMEOUT);
+					   time + switch_timeout);
 		}
 	} else {
 		tp->gesture.finger_count_pending = 0;
